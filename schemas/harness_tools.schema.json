@@ -1,0 +1,213 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/yuanchenglu/oh-my-deepseek-harness/schemas/harness_tools.schema.json",
+  "title": "DeepSeek Harness tool payloads",
+  "description": "Single source of truth for the harness tool payloads registered in src/deepseek_harness/tools.py (_TOOL_SCHEMAS): plan/plan_status, memory_store/memory_filter, checkpoint_create. TypeScript types are generated from this file by scripts/gen_ts_types.py. The write-side memory gate (src/deepseek_harness/memory_hygiene.py) exists because the HF discussion deepseek-ai/DeepSeek-V4.1-Flash#46 measured 12x memory bloat (161 KB vs 13 KB for the same conversation), with the excess made of decisions logs, self-advice, preambles and 109 'TBC' placeholders; prompt rules had zero effect, so contracts and gates live in code.",
+  "type": "object",
+  "$defs": {
+    "StepStatus": {
+      "title": "StepStatus",
+      "description": "Lifecycle status of a plan step. Mirrors harness_server.models.PlanStatus and the enum in tools.plan_update_step.status.",
+      "type": "string",
+      "enum": [
+        "pending",
+        "in_progress",
+        "completed",
+        "blocked",
+        "pending_review",
+        "cancelled"
+      ]
+    },
+    "MemoryLayer": {
+      "title": "MemoryLayer",
+      "description": "Memory layer enum from tools.memory_store.layer.",
+      "type": "string",
+      "enum": [
+        "constraint",
+        "preference",
+        "style",
+        "decision",
+        "pattern"
+      ]
+    },
+    "PlanStep": {
+      "title": "PlanStep",
+      "description": "One executable unit of a plan (harness_server.models.OKRPlanStep / tools.plan_update_step).",
+      "type": "object",
+      "properties": {
+        "step_id": {
+          "type": "string",
+          "description": "Stable step identifier."
+        },
+        "text": {
+          "type": "string",
+          "description": "Step description, as returned by plan_create."
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional human-facing summary of the step."
+        },
+        "key": {
+          "type": "string",
+          "description": "Key-result / milestone label, e.g. S1 or KR-A."
+        },
+        "status": {
+          "$ref": "#/$defs/StepStatus"
+        },
+        "parent_id": {
+          "type": ["string", "null"],
+          "description": "Parent step id; null for top-level steps."
+        },
+        "dependency_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Steps this step depends on (DAG edges)."
+        }
+      },
+      "required": ["step_id", "text", "status"],
+      "additionalProperties": false
+    },
+    "Plan": {
+      "title": "Plan",
+      "description": "Plan payload returned by plan_create and consumed by plan_cascade.",
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "description": "Plan identifier (plan_xxx)."
+        },
+        "task_description": {
+          "type": "string",
+          "description": "Original task description passed to plan_create."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "description": "Ordered plan steps."
+        }
+      },
+      "required": ["plan_id", "steps"],
+      "additionalProperties": false
+    },
+    "PlanStatus": {
+      "title": "PlanStatus",
+      "description": "Response of the plan_status tool (harness_server.models.PlanStatusResponse).",
+      "type": "object",
+      "properties": {
+        "plan_id": {
+          "type": "string",
+          "description": "Plan identifier."
+        },
+        "steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "description": "All steps of the plan."
+        },
+        "adjacency_list": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": "Dependency graph: step_id -> ids of steps depending on it."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Plan creation time (ISO-8601)."
+        },
+        "updated_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Last update time (ISO-8601)."
+        }
+      },
+      "required": ["plan_id", "steps", "adjacency_list"],
+      "additionalProperties": false
+    },
+    "MemoryEntry": {
+      "title": "MemoryEntry",
+      "description": "A memory record as accepted by memory_store and filtered by memory_filter (lambda_value).",
+      "type": "object",
+      "properties": {
+        "content": {
+          "type": "string",
+          "description": "Memory text. Must pass memory_hygiene.admit(): facts only."
+        },
+        "layer": {
+          "$ref": "#/$defs/MemoryLayer"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Retrieval tags."
+        },
+        "lambda": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Retrieval lambda (tools.memory_filter.lambda_value): 0.0 constraints only, 0.5 constraints+preferences+decisions, 1.0 everything."
+        },
+        "source": {
+          "type": "string",
+          "description": "Origin identifier used for dedupe (e.g. MEMORY.md)."
+        },
+        "created_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Creation time (UTC ISO-8601)."
+        }
+      },
+      "required": ["content", "layer", "tags", "lambda"],
+      "additionalProperties": false
+    },
+    "Checkpoint": {
+      "title": "Checkpoint",
+      "description": "Checkpoint snapshot from checkpoint_create (harness_server.models.Checkpoint).",
+      "type": "object",
+      "properties": {
+        "checkpoint_id": {
+          "type": "string",
+          "description": "Checkpoint identifier (cp_xxx)."
+        },
+        "plan_id": {
+          "type": "string",
+          "description": "Owning plan identifier."
+        },
+        "plan_steps": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PlanStep"
+          },
+          "description": "Plan steps captured at snapshot time."
+        },
+        "completed_step_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Ids of steps completed at snapshot time."
+        },
+        "unexpected_findings": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Findings that diverged from the plan."
+        }
+      },
+      "required": ["checkpoint_id", "plan_id", "completed_step_ids", "unexpected_findings"],
+      "additionalProperties": false
+    }
+  }
+}
